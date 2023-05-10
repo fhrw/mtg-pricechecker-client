@@ -104,6 +104,7 @@ view model =
         , input [ placeholder "name", onInput SetSearchInput ] []
         , button [ onClick (AddToList model.searchInput) ] [ text "add" ]
         , orderTable model.cardsList
+        , viewOptimized model.optimizedOrder.arrangement
         ]
 
 
