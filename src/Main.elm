@@ -34,11 +34,18 @@ validCards =
 type alias Model =
     { searchInput : String
     , cardsList : List String
-    , optimizedOrder :
+    , optimizedOrder : OptOrder
+    }
+
+
+type OptOrder
+    = Loading
+    | Success
         { price : Float
         , arrangement : List ShopOrder
         }
-    }
+    | Failure
+    | Unloaded
 
 
 type alias ShopOrder =
@@ -57,10 +64,7 @@ initialModel : Model
 initialModel =
     { searchInput = ""
     , cardsList = []
-    , optimizedOrder =
-        { price = 0
-        , arrangement = []
-        }
+    , optimizedOrder = Unloaded
     }
 
 
@@ -91,20 +95,6 @@ update msg model =
             ( { model | cardsList = removeFromTable model.cardsList card }, Cmd.none )
 
 
-orderTable : List String -> Html Msg
-orderTable names =
-    div []
-        (List.map
-            (\ele ->
-                div []
-                    [ p [] [ text ele ]
-                    , button [ onClick (RemoveFromList ele) ] [ text "x" ]
-                    ]
-            )
-            names
-        )
-
-
 
 -- SUBSCRIPTIONS
 
@@ -125,7 +115,8 @@ view model =
         , input [ placeholder "name", onInput SetSearchInput ] []
         , button [ onClick (AddToList model.searchInput) ] [ text "add" ]
         , orderTable model.cardsList
-        , viewOptimized model.optimizedOrder.arrangement
+        , viewOptimized model.optimizedOrder
+        , button [] [ text "scrape and optimize!" ]
         ]
 
 
@@ -148,6 +139,20 @@ viewCardsList cards =
         )
 
 
+orderTable : List String -> Html Msg
+orderTable names =
+    div []
+        (List.map
+            (\ele ->
+                div []
+                    [ p [] [ text ele ]
+                    , button [ onClick (RemoveFromList ele) ] [ text "x" ]
+                    ]
+            )
+            names
+        )
+
+
 viewShop : ShopOrder -> Html Msg
 viewShop shop =
     div []
@@ -156,7 +161,18 @@ viewShop shop =
         ]
 
 
-viewOptimized : List ShopOrder -> Html Msg
+viewOptimized : OptOrder -> Html Msg
 viewOptimized orderList =
-    div []
-        (List.map viewShop orderList)
+    case orderList of
+        Success data ->
+            div []
+                (List.map viewShop data.arrangement)
+
+        Loading ->
+            div [] [ p [] [ text "Calculating the perfect order..." ] ]
+
+        Failure ->
+            div [] [ p [] [ text "Failed somehow. Guess it it wasn't so perfect after all..." ] ]
+
+        Unloaded ->
+            div [] [ p [] [ text "waiting for you to press optimize!" ] ]
