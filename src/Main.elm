@@ -4,8 +4,9 @@ import Browser
 import Html exposing (Html, button, div, h1, h3, input, p, text)
 import Html.Attributes exposing (placeholder)
 import Html.Events exposing (onClick, onInput)
+import Http
+import Json.Decode as Decode exposing (Decoder, Error)
 import List.Extra exposing (remove)
-import Platform.Cmd as Cmd
 
 
 
@@ -42,10 +43,18 @@ type OptOrder
     = Loading
     | Success
         { price : Float
-        , arrangement : List ShopOrder
+        , arrangement : Data
         }
     | Failure
     | Unloaded
+
+
+type alias Payload =
+    { data : Data }
+
+
+type alias Data =
+    List ShopOrder
 
 
 type alias ShopOrder =
@@ -76,6 +85,8 @@ type Msg
     = SetSearchInput String
     | AddToList String
     | RemoveFromList String
+    | GetOptimize
+    | GotOptimized (Result Http.Error Payload)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -93,6 +104,70 @@ update msg model =
 
         RemoveFromList card ->
             ( { model | cardsList = removeFromTable model.cardsList card }, Cmd.none )
+
+        GetOptimize ->
+            ( { model | optimizedOrder = Loading }, loadOpti )
+
+        GotOptimized result ->
+            case result of
+                Err _ ->
+                    ( { model
+                        | optimizedOrder = Failure
+                      }
+                    , Cmd.none
+                    )
+
+                Ok payload ->
+                    ( { model
+                        | optimizedOrder =
+                            Success
+                                { price = 0.0
+                                , arrangement = payload.data
+                                }
+                      }
+                    , Cmd.none
+                    )
+
+
+loadOpti =
+    Http.get
+        { url = "http://localhost:8080/mock"
+        , expect = Http.expectJson GotOptimized decodePayload
+        }
+
+
+orderParser jsonString =
+    case Decode.decodeString decodePayload jsonString of
+        Ok result ->
+            Result.Ok result
+
+        Err error ->
+            Result.Err (Decode.errorToString error)
+
+
+decodeCard : Decoder Card
+decodeCard =
+    Decode.map2 Card
+        (Decode.field "name" Decode.string)
+        (Decode.field "price" Decode.float)
+
+
+decodeShop : Decoder ShopOrder
+decodeShop =
+    Decode.map2 ShopOrder
+        (Decode.field "Name" Decode.string)
+        (Decode.field "Cards" (Decode.list decodeCard))
+
+
+decodeData : Decoder Data
+decodeData =
+    Decode.list decodeShop
+
+
+decodePayload : Decoder Payload
+decodePayload =
+    Decode.map Payload
+        (Decode.field "data" decodeData)
 
 
 
@@ -116,7 +191,7 @@ view model =
         , button [ onClick (AddToList model.searchInput) ] [ text "add" ]
         , orderTable model.cardsList
         , viewOptimized model.optimizedOrder
-        , button [] [ text "scrape and optimize!" ]
+        , button [ onClick GetOptimize ] [ text "scrape and optimize!" ]
         ]
 
 
