@@ -6,6 +6,7 @@ import Html.Attributes exposing (placeholder)
 import Html.Events exposing (onClick, onInput)
 import Http
 import Json.Decode as Decode exposing (Decoder, Error)
+import Json.Encode as Encode exposing (object)
 import List.Extra exposing (remove)
 
 
@@ -29,7 +30,7 @@ main =
 
 validCards : List String
 validCards =
-    [ "island", "forest", "plains" ]
+    [ "Island", "Forest", "Plains" ]
 
 
 type alias Model =
@@ -106,7 +107,7 @@ update msg model =
             ( { model | cardsList = removeFromTable model.cardsList card }, Cmd.none )
 
         GetOptimize ->
-            ( { model | optimizedOrder = Loading }, loadOpti )
+            ( { model | optimizedOrder = Loading }, loadOpti model )
 
         GotOptimized result ->
             case result of
@@ -129,20 +130,30 @@ update msg model =
                     )
 
 
-loadOpti =
-    Http.get
-        { url = "http://localhost:8080/mock"
+encodeCardJson cardName =
+    Encode.object [ ( "name", Encode.string cardName ) ]
+
+
+encodeCardList : List String -> List Encode.Value
+encodeCardList list =
+    List.map (\x -> encodeCardJson x) list
+
+
+encodeListArray list =
+    Encode.list identity list
+
+
+encodePayload array =
+    Encode.object [ ( "List", array ) ]
+
+
+loadOpti : Model -> Cmd Msg
+loadOpti model =
+    Http.post
+        { url = "http://localhost:8080/op"
+        , body = encodeCardList model.cardsList |> encodeListArray |> encodePayload |> Http.jsonBody
         , expect = Http.expectJson GotOptimized decodePayload
         }
-
-
-orderParser jsonString =
-    case Decode.decodeString decodePayload jsonString of
-        Ok result ->
-            Result.Ok result
-
-        Err error ->
-            Result.Err (Decode.errorToString error)
 
 
 decodeCard : Decoder Card
