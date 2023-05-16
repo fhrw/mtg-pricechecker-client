@@ -2,7 +2,7 @@ module Main exposing (main)
 
 import Browser
 import Html exposing (Html, button, div, h1, h3, input, p, text)
-import Html.Attributes exposing (placeholder)
+import Html.Attributes exposing (placeholder, value)
 import Html.Events exposing (onClick, onInput)
 import Http
 import Json.Decode as Decode exposing (Decoder, Error)
@@ -30,11 +30,12 @@ main =
 
 validCards : List String
 validCards =
-    [ "Island", "Forest", "Plains" ]
+    [ "Sol Ring", "Badlands", "Cryptic Command" ]
 
 
 type alias Model =
     { searchInput : String
+    , searchResults : SearchResults
     , cardsList : List String
     , optimizedOrder : OptOrder
     }
@@ -44,14 +45,18 @@ type OptOrder
     = Loading
     | Success
         { price : Float
-        , arrangement : Data
+        , arrangement : ShopOrder
         }
     | Failure
     | Unloaded
 
 
+type alias SearchResults =
+    List String
+
+
 type alias Payload =
-    { data : Data }
+    { data : ShopOrder }
 
 
 type alias Data =
@@ -73,6 +78,7 @@ type alias Card =
 initialModel : Model
 initialModel =
     { searchInput = ""
+    , searchResults = []
     , cardsList = []
     , optimizedOrder = Unloaded
     }
@@ -94,11 +100,20 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         SetSearchInput newText ->
-            ( { model | searchInput = newText }, Cmd.none )
+            ( { model
+                | searchInput = newText
+              }
+            , Cmd.none
+            )
 
         AddToList newCard ->
             if List.member newCard validCards && not (List.member newCard model.cardsList) then
-                ( { model | cardsList = List.append model.cardsList [ newCard ] }, Cmd.none )
+                ( { model
+                    | searchInput = ""
+                    , cardsList = List.append model.cardsList [ newCard ]
+                  }
+                , Cmd.none
+                )
 
             else
                 ( model, Cmd.none )
@@ -122,7 +137,9 @@ update msg model =
                     ( { model
                         | optimizedOrder =
                             Success
-                                { price = 0.0
+                                { price =
+                                    List.map (\x -> x.price) payload.data.cards
+                                        |> List.foldl (\x a -> x + a) 0
                                 , arrangement = payload.data
                                 }
                       }
@@ -150,8 +167,12 @@ encodePayload array =
 loadOpti : Model -> Cmd Msg
 loadOpti model =
     Http.post
-        { url = "http://localhost:8080/op"
-        , body = encodeCardList model.cardsList |> encodeListArray |> encodePayload |> Http.jsonBody
+        { url = "http://localhost:8080/best"
+        , body =
+            encodeCardList model.cardsList
+                |> encodeListArray
+                |> encodePayload
+                |> Http.jsonBody
         , expect = Http.expectJson GotOptimized decodePayload
         }
 
@@ -178,7 +199,7 @@ decodeData =
 decodePayload : Decoder Payload
 decodePayload =
     Decode.map Payload
-        (Decode.field "data" decodeData)
+        (Decode.field "data" decodeShop)
 
 
 
@@ -198,7 +219,8 @@ view : Model -> Html Msg
 view model =
     div []
         [ h1 [] [ text "Optimizer" ]
-        , input [ placeholder "name", onInput SetSearchInput ] []
+        , input [ placeholder "name", value model.searchInput, onInput SetSearchInput ] []
+        , viewSuggestedResults model.searchResults
         , button [ onClick (AddToList model.searchInput) ] [ text "add" ]
         , orderTable model.cardsList
         , viewOptimized model.optimizedOrder
@@ -209,6 +231,17 @@ view model =
 removeFromTable : List String -> String -> List String
 removeFromTable list item =
     remove item list
+
+
+viewSuggestedResults : List String -> Html Msg
+viewSuggestedResults list =
+    div []
+        (List.map
+            (\ele ->
+                p [] [ text ele ]
+            )
+            list
+        )
 
 
 viewCardsList : List Card -> Html Msg
@@ -239,10 +272,11 @@ orderTable names =
         )
 
 
-viewShop : ShopOrder -> Html Msg
-viewShop shop =
+viewShop : ShopOrder -> Float -> Html Msg
+viewShop shop price =
     div []
         [ h3 [] [ text shop.shopName ]
+        , p [] [ text ("total price: " ++ String.fromFloat price) ]
         , viewCardsList shop.cards
         ]
 
@@ -252,7 +286,10 @@ viewOptimized orderList =
     case orderList of
         Success data ->
             div []
-                (List.map viewShop data.arrangement)
+                [ viewShop
+                    data.arrangement
+                    data.price
+                ]
 
         Loading ->
             div [] [ p [] [ text "Calculating the perfect order..." ] ]
