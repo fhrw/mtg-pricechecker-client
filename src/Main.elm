@@ -1,6 +1,7 @@
 module Main exposing (main)
 
 import Browser
+import Fuzzy exposing (match)
 import Html exposing (Html, button, div, h1, h3, input, p, text)
 import Html.Attributes exposing (placeholder, value)
 import Html.Events exposing (onClick, onInput)
@@ -8,6 +9,7 @@ import Http
 import Json.Decode as Decode exposing (Decoder, Error)
 import Json.Encode as Encode exposing (object)
 import List.Extra exposing (remove)
+import String
 
 
 
@@ -30,7 +32,7 @@ main =
 
 validCards : List String
 validCards =
-    [ "Sol Ring", "Badlands", "Cryptic Command" ]
+    [ "Sol Ring", "Badlands", "Cryptic Command", "Island", "Mountain", "Wasteland", "Rhox War Monk", "Polymorph" ]
 
 
 type alias Model =
@@ -102,6 +104,7 @@ update msg model =
         SetSearchInput newText ->
             ( { model
                 | searchInput = newText
+                , searchResults = setSearchResults newText validCards
               }
             , Cmd.none
             )
@@ -202,6 +205,33 @@ decodePayload =
         (Decode.field "data" decodeShop)
 
 
+setSearchResults : String -> List String -> SearchResults
+setSearchResults string cards =
+    if string == "" then
+        []
+
+    else
+        let
+            simpleMatch config separators needle hay =
+                match config separators needle hay |> .score
+        in
+        List.sortBy (simpleMatch [] [] (String.toLower string)) (List.map (\x -> String.toLower x) cards)
+            |> List.map (\x -> capitalizeCard x)
+            |> topSuggestion
+
+
+capitalizeCard : String -> String
+capitalizeCard string =
+    String.words string
+        |> List.map (\x -> String.join "" [ String.toUpper (String.left 1 x), String.right (String.length x - 1) x ])
+        |> String.join " "
+
+
+topSuggestion : SearchResults -> SearchResults
+topSuggestion list =
+    List.take 3 list
+
+
 
 -- SUBSCRIPTIONS
 
@@ -238,7 +268,10 @@ viewSuggestedResults list =
     div []
         (List.map
             (\ele ->
-                p [] [ text ele ]
+                div []
+                    [ p [] [ text ele ]
+                    , button [ onClick (AddToList ele) ] [ text "quick add" ]
+                    ]
             )
             list
         )
